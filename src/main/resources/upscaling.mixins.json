@@ -1,0 +1,15 @@
+{
+	"required": true,
+	"package": "io.github.steinkoloss.upscaling.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"GameRendererMixin",
+		"SkyRendererMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}

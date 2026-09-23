@@ -1,0 +1,17 @@
+# gradle
+.gradle/
+build/
+out/
+run/
+*.class
+
+# idea
+.idea/
+*.iml
+
+# eclipse / vscode
+bin/
+.settings/
+.classpath
+.project
+.vscode/

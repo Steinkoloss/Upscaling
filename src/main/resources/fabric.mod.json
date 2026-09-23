@@ -1,0 +1,20 @@
+{
+	"schemaVersion": 1,
+	"id": "upscaling",
+	"version": "${version}",
+	"name": "Upscaling",
+	"description": "Renders the world at a lower internal resolution and upscales it. Groundwork for temporal upscalers (FSR 3.1 / FSR 4) on Minecraft's Vulkan renderer.",
+	"authors": ["Steinkoloss"],
+	"license": "AGPL-3.0-only",
+	"environment": "client",
+	"entrypoints": {
+		"client": ["io.github.steinkoloss.upscaling.UpscalingClient"]
+	},
+	"mixins": ["upscaling.mixins.json"],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
