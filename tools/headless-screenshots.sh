@@ -45,7 +45,7 @@ if ! xdpyinfo -display "$DISPLAY_NUM" >/dev/null 2>&1; then
 fi
 export DISPLAY="$DISPLAY_NUM"
 
-./gradlew --no-daemon runClient --args="--quickPlaySingleplayer $WORLD" >"$LOG" 2>&1 &
+./gradlew --no-daemon runClient -Pminecraft_version=${MC_VERSION:-26.3} --args="--quickPlaySingleplayer $WORLD" >"$LOG" 2>&1 &
 GRADLE_PID=$!
 cleanup() {
 	pkill -f 'net.fabricmc.devlaunchinjector.Main' 2>/dev/null || true
