@@ -8,6 +8,7 @@ import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import io.github.steinkoloss.upscaling.FrameState;
 import io.github.steinkoloss.upscaling.MotionVectors;
 import io.github.steinkoloss.upscaling.SceneTarget;
+import io.github.steinkoloss.upscaling.ShaderPackCompat;
 import io.github.steinkoloss.upscaling.Jitter;
 import io.github.steinkoloss.upscaling.UpscalingConfig;
 import io.github.steinkoloss.upscaling.fsr.Fsr4Upscaler;
@@ -130,10 +131,13 @@ abstract class GameRendererMixin {
 		FrameState.endFrame();
 	}
 
-	/** Post effects sample the main depth buffer at full resolution; leave those frames native for now. */
+	/**
+	 * Post effects sample the main depth buffer at full resolution, and shader packs run their own
+	 * chain on window-sized targets; leave those frames native.
+	 */
 	@Unique
 	private boolean upscaling$scaledThisFrame() {
-		return UpscalingConfig.enabled() && this.appliedPostEffects.isEmpty();
+		return UpscalingConfig.enabled() && this.appliedPostEffects.isEmpty() && !ShaderPackCompat.shaderPackActive();
 	}
 
 	@Inject(method = "close", at = @At("TAIL"))

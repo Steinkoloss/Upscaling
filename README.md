@@ -20,6 +20,9 @@ On Minecraft 26.3 (including pre-releases) with Fabric, Vulkan backend:
   automatically when FSR 4 runs). Moving objects (mobs, particles, water) only
   get the camera's motion so far.
 - Works alongside Sodium 0.9.3-alpha.1 and Distant Horizons 3.3.2.
+- Steps aside while a [Vitrail](https://github.com/avpbynf/Vitrail-Shaders)
+  shader pack is drawing: the world then renders natively and Vitrail's own
+  render scale applies. (Feeding a pack's output to FSR is future work.)
 
 **What has and has not been verified.** Everything was built and run headless
 on Mesa's lavapipe (software Vulkan): the device features get enabled, fsr4vk
