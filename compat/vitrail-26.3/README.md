@@ -14,6 +14,14 @@ commit `016b7f2`) ports the shared code and NeoForge to 26.3. These patches go o
 3. **Prepare Sodium's draw batches for the light's render lists.** Terrain cast no
    shadows: Sodium 26.3 builds draw commands in `prepareChunkRendering`, and the shadow
    walk's list swap cleared them, so the shadow map only held entities.
+4. **Map locations for Vitrail's own passes outside `pack/`.** The render scale's
+   and the Distant Horizons occlusion shaders didn't compile on 26.3 ("SPIR-V
+   requires location for user input/output"), so any render scale below 100 %
+   was dropped for the session.
+5. **Offer the scaled world to an external temporal upscaler.** Before its FSR 1
+   passes, the render scale hands its frame and depth to this mod's
+   `ShaderPackUpscaler` (looked up by name, so neither jar needs the other).
+   With FSR 4 available, it takes over the upscale.
 
 Apply and build:
 

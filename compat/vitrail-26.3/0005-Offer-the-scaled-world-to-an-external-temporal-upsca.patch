@@ -1,0 +1,136 @@
+From 3fecfaf3d8c5e7173c96342d4916987049fb18ff Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 24 Sep 2026 11:52:10 +0000
+Subject: [PATCH 5/5] Offer the scaled world to an external temporal upscaler
+
+Before its own EASU and RCAS passes, the render scale hands the scaled frame,
+the opaque forward depth and the main target to the Upscaling mod's
+ShaderPackUpscaler when it is present (looked up by name, no dependency).
+When that mod takes the frame (FSR 4), the spatial passes are skipped.
+---
+ .../dev/vitrail/render/ExternalUpscale.java   | 71 +++++++++++++++++++
+ .../java/dev/vitrail/render/PackChain.java    | 11 +++
+ .../java/dev/vitrail/render/RenderScale.java  |  7 ++
+ 3 files changed, 89 insertions(+)
+ create mode 100644 common/src/main/java/dev/vitrail/render/ExternalUpscale.java
+
+diff --git a/common/src/main/java/dev/vitrail/render/ExternalUpscale.java b/common/src/main/java/dev/vitrail/render/ExternalUpscale.java
+new file mode 100644
+index 0000000..73e4d09
+--- /dev/null
++++ b/common/src/main/java/dev/vitrail/render/ExternalUpscale.java
+@@ -0,0 +1,71 @@
++package dev.vitrail.render;
++
++import dev.vitrail.Vitrail;
++
++import com.mojang.blaze3d.pipeline.RenderTarget;
++import com.mojang.renderpearl.api.textures.GpuTextureView;
++import java.lang.invoke.MethodHandle;
++import java.lang.invoke.MethodHandles;
++import java.lang.invoke.MethodType;
++import org.jspecify.annotations.Nullable;
++
++/**
++ * Offers the scaled world to a temporal upscaler living in another mod, before this engine's own
++ * spatial one runs.
++ * <p>
++ * The other mod is found by name and never linked against, so neither jar needs the other: the
++ * method takes only the game's own types, and a game without it answers {@code false} here forever
++ * and draws exactly what it drew before. The one it looks for is the Upscaling mod's FSR 4 path,
++ * {@code io.github.steinkoloss.upscaling.api.ShaderPackUpscaler#upscale}.
++ * <p>
++ * What it is handed is what a temporal upscaler takes and this engine already has at the moment the
++ * upscale runs: the world at the render size, the opaque world's depth as {@link PackDepth} keeps
++ * it (forward over 0..1, the window a pack reads depth in, R32F), and the target to write the
++ * window-sized picture into. Motion vectors and the sub-pixel jitter are the other side's to make,
++ * because only it knows the jitter it put into the projection this engine captured.
++ */
++final class ExternalUpscale {
++
++	private static final String OWNER = "io.github.steinkoloss.upscaling.api.ShaderPackUpscaler";
++
++	private static final @Nullable MethodHandle UPSCALE = find();
++
++	private static boolean failed;
++
++	private ExternalUpscale() {
++	}
++
++	/**
++	 * Whether the other mod upscaled this frame into {@code output}. False leaves the frame to this
++	 * engine's own passes, and so does any failure, which also stops asking for the session.
++	 */
++	static boolean tryUpscale(GpuTextureView world, @Nullable GpuTextureView forwardDepth, int renderWidth,
++			int renderHeight, RenderTarget output) {
++		if (UPSCALE == null || failed || forwardDepth == null) {
++			return false;
++		}
++
++		try {
++			return (boolean) UPSCALE.invokeExact(world, forwardDepth, renderWidth, renderHeight, output);
++		} catch (Throwable t) {
++			failed = true;
++			Vitrail.logger().error("The external upscaler failed and is not asked again this session", t);
++
++			return false;
++		}
++	}
++
++	private static @Nullable MethodHandle find() {
++		try {
++			Class<?> owner = Class.forName(OWNER, true, ExternalUpscale.class.getClassLoader());
++			MethodHandle handle = MethodHandles.publicLookup().findStatic(owner, "upscale",
++					MethodType.methodType(boolean.class, GpuTextureView.class, GpuTextureView.class,
++							int.class, int.class, RenderTarget.class));
++			Vitrail.logger().info("An external temporal upscaler is present and is offered the scaled world");
++
++			return handle;
++		} catch (ReflectiveOperationException | LinkageError e) {
++			return null;
++		}
++	}
++}
+diff --git a/common/src/main/java/dev/vitrail/render/PackChain.java b/common/src/main/java/dev/vitrail/render/PackChain.java
+index 4b77090..cc99834 100644
+--- a/common/src/main/java/dev/vitrail/render/PackChain.java
++++ b/common/src/main/java/dev/vitrail/render/PackChain.java
+@@ -139,6 +139,17 @@ static GpuTextureView motionVectors() {
+ 				: chain.targets.motionVectors().view();
+ 	}
+ 
++	/**
++	 * The opaque world's depth as {@link PackDepth} keeps it, forward over 0..1 in R32F, or null
++	 * while nothing has filled it. Static for the same reason as {@link #motionVectors}: the reader
++	 * is {@link RenderScale}, handing it to an external upscaler.
++	 */
++	static GpuTextureView opaqueDepth() {
++		PackChain chain = active;
++
++		return chain == null || chain.targets == null ? null : chain.targets.depth().opaque();
++	}
++
+ 	/**
+ 	 * Whether the frame has stopped drawing the pack, for a reason the load or the frame found and
+ 	 * {@link PackChoice#lastError} says. Lifted only by the next load.
+diff --git a/common/src/main/java/dev/vitrail/render/RenderScale.java b/common/src/main/java/dev/vitrail/render/RenderScale.java
+index d888e2d..27902cb 100644
+--- a/common/src/main/java/dev/vitrail/render/RenderScale.java
++++ b/common/src/main/java/dev/vitrail/render/RenderScale.java
+@@ -582,6 +582,13 @@ public static void endWorld(RenderTarget main, CommandEncoder encoder) {
+ 
+ 		GpuDevice device = RenderSystem.getDevice();
+ 		GpuTextureView world = ((RenderTargetAccessor) scaled).vitrail$colorTextureView();
++		// A temporal upscaler in another mod goes first, and replaces both passes below when it
++		// takes the frame: it sharpens its own output, and folding or sharpening after it would
++		// do the same work twice.
++		if (ExternalUpscale.tryUpscale(world, PackChain.opaqueDepth(), scaled.width, scaled.height, main)) {
++			return;
++		}
++
+ 		RenderPipeline easu = EASU.get(device);
+ 		RenderPipeline rcas = easu == null ? null : RCAS.get(device);
+ 		if (easu != null && rcas != null && upscaled != null) {
+-- 
+2.43.0
+

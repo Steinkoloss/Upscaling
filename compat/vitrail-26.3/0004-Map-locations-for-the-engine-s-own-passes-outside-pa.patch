@@ -1,0 +1,39 @@
+From 0acef05a082c119a53157914f8ba6371fffb0291 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 24 Sep 2026 11:52:09 +0000
+Subject: [PATCH 4/5] Map locations for the engine's own passes outside pack/
+
+On 26.3 the render scale's and the distant occlusion's shaders (vitrail:scale/...,
+vitrail:distant/...) declare varyings without locations and failed to compile
+("SPIR-V requires location for user input/output"), so the render scale was
+abandoned for the session. Give every vitrail: id the automatic location mapping
+the pack/ programs already get.
+---
+ common/src/main/java/dev/vitrail/mixin/GlslCompilerMixin.java | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/common/src/main/java/dev/vitrail/mixin/GlslCompilerMixin.java b/common/src/main/java/dev/vitrail/mixin/GlslCompilerMixin.java
+index c5cca1d..fd3c35e 100644
+--- a/common/src/main/java/dev/vitrail/mixin/GlslCompilerMixin.java
++++ b/common/src/main/java/dev/vitrail/mixin/GlslCompilerMixin.java
+@@ -10,6 +10,7 @@
+ import com.mojang.renderpearl.backend.api.SpvModule;
+ import com.mojang.renderpearl.frontend.shaders.GlslCompiler;
+ import com.mojang.renderpearl.frontend.shaders.SPIRVModule;
++import dev.vitrail.Vitrail;
+ import dev.vitrail.cache.ModuleCache;
+ import dev.vitrail.glsl.LoadClock;
+ import dev.vitrail.render.GeometryStage;
+@@ -39,7 +40,8 @@ public abstract class GlslCompilerMixin {
+     private long vitrail$locations(GlslCompiler compiler, Operation<Long> original,
+             @Local(argsOnly = true, ordinal = 0) String name) {
+         long options = original.call(compiler);
+-        if (RawLocals.ours(name)) {
++        // The engine's own passes outside pack/ (scale/, distant/) declare unlocated varyings too.
++        if (RawLocals.ours(name) || name.startsWith(Vitrail.MOD_ID + ":")) {
+             Shaderc.shaderc_compile_options_set_auto_map_locations(options, true);
+             Shaderc.shaderc_compile_options_add_macro_definition(options, "gl_VertexID", "gl_VertexIndex");
+             Shaderc.shaderc_compile_options_add_macro_definition(options, "gl_InstanceID", "gl_InstanceIndex");
+-- 
+2.43.0
+

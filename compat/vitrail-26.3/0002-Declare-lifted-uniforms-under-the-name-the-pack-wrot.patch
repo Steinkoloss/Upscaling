@@ -1,0 +1,59 @@
+From 0e09aba6456dd6b90983e4489787bc1719298bd8 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 24 Sep 2026 01:33:49 +0000
+Subject: [PATCH 2/5] Declare lifted uniforms under the name the pack wrote
+
+The 26.3 port renamed a lifted uniform to whatever a pack macro maps its
+name to, wherever that macro is defined. Complementary Reimagined
+declares uniform float nightVision and only later defines nightVision as
+nightVisionWithAddedSupport, a global initialised from the uniform, so
+the rename left nightVision undeclared and redefined the global: every
+program including common.glsl failed to compile and the pack was refused.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019Rd9hEeedfauYVxKQg5jqi
+---
+ .../java/dev/vitrail/glsl/GlslTranslator.java | 20 ++++---------------
+ 1 file changed, 4 insertions(+), 16 deletions(-)
+
+diff --git a/common/src/main/java/dev/vitrail/glsl/GlslTranslator.java b/common/src/main/java/dev/vitrail/glsl/GlslTranslator.java
+index 82a275a..f918b81 100644
+--- a/common/src/main/java/dev/vitrail/glsl/GlslTranslator.java
++++ b/common/src/main/java/dev/vitrail/glsl/GlslTranslator.java
+@@ -5528,8 +5528,10 @@ private boolean readDeclarators(List<Integer> parts, int from, String type, Stri
+ 				return false;
+ 			}
+ 
+-			String name = target == this.samplers || target == this.blockMembers
+-					? uniformAlias(token.text()) : token.text();
++			// Declared under the name the pack wrote. A macro that later renames an identifier
++			// (Complementary's "#define nightVision nightVisionWithAddedSupport") must not rename
++			// the uniform it reads from, or the pack's own global reading it stops compiling.
++			String name = token.text();
+ 			if (!memory.isEmpty()) {
+ 				this.memoryQualifiers.put(name, memory);
+ 			}
+@@ -5576,20 +5578,6 @@ private boolean readDeclarators(List<Integer> parts, int from, String type, Stri
+ 		return any;
+ 	}
+ 
+-	/** Lifted declarations precede pack macros, so use the identifier the compiler will see. */
+-	private String uniformAlias(String name) {
+-		Set<String> visited = new HashSet<>();
+-		String resolved = name;
+-		while (visited.add(resolved)) {
+-			String next = this.macroAliases.get(resolved);
+-			if (next == null || next.isEmpty()) {
+-				return resolved;
+-			}
+-			resolved = next;
+-		}
+-		return name;
+-	}
+-
+ 	private void record(Map<String, String> target, String name, String declaration) {
+ 		String existing = target.putIfAbsent(name, declaration);
+ 		if (existing != null && !existing.equals(declaration)) {
+-- 
+2.43.0
+
