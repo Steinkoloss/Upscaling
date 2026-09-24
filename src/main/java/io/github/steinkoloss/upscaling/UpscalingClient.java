@@ -2,6 +2,9 @@ package io.github.steinkoloss.upscaling;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.api.ClientModInitializer;
+import com.mojang.logging.LogUtils;
+import io.github.steinkoloss.upscaling.fsr.Fsr4DeviceFeatures;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.KeyMapping;
@@ -10,6 +13,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
 public final class UpscalingClient implements ClientModInitializer {
+	private static final org.slf4j.Logger LOGGER = LogUtils.getLogger();
 	private static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("upscaling", "upscaling"));
 
 	@Override
@@ -17,6 +21,9 @@ public final class UpscalingClient implements ClientModInitializer {
 		KeyMapping toggle = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.upscaling.toggle", InputConstants.KEY_F8, CATEGORY));
 		KeyMapping cycle = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.upscaling.cycle_scale", InputConstants.KEY_F9, CATEGORY));
 		KeyMapping debug = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.upscaling.cycle_debug", InputConstants.KEY_F10, CATEGORY));
+
+		ClientLifecycleEvents.CLIENT_STARTED.register(client -> LOGGER.info(
+				"Upscaling: FSR 4 device features {}", Fsr4DeviceFeatures.enabledOnCurrentDevice() ? "enabled" : "not available on this device/backend"));
 
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			while (toggle.consumeClick()) {

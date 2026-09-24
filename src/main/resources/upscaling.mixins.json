@@ -4,7 +4,8 @@
 	"compatibilityLevel": "JAVA_25",
 	"client": [
 		"GameRendererMixin",
-		"SkyRendererMixin"
+		"SkyRendererMixin",
+		"VulkanFeatureSetsMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
