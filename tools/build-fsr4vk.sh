@@ -14,6 +14,7 @@
 # Needs: git, g++ (C++20), and the Vulkan loader (libvulkan.so.1). Vulkan
 # headers are fetched if the system has none.
 set -euo pipefail
+trap 'echo "build-fsr4vk.sh failed at line $LINENO" >&2' ERR
 
 FSR4VK_REPO="https://github.com/dvj5411/fsr4vk"
 # v0.4.1 (2026-09-22). Bump deliberately: the asset layout is tied to the source.
@@ -40,7 +41,18 @@ if [ ! -f /usr/include/vulkan/vulkan.h ] || ! grep -q VK_EXT_descriptor_buffer /
 	VULKAN_INCLUDE="$WORK/Vulkan-Headers/include"
 fi
 
-LIBVULKAN="$(ldconfig -p | awk '/libvulkan\.so\.1 .*x86-64/ {print $NF; exit}')"
+# No early exit in awk: that would SIGPIPE ldconfig and, with pipefail, abort
+# the script silently on systems with many libraries.
+LIBVULKAN="$( (ldconfig -p 2>/dev/null || /sbin/ldconfig -p 2>/dev/null || true) \
+	| awk '/libvulkan\.so\.1 .*x86-64/ && !found {print $NF; found = 1}')"
+if [ -z "$LIBVULKAN" ]; then
+	for candidate in /usr/lib/x86_64-linux-gnu/libvulkan.so.1 /usr/lib64/libvulkan.so.1 /usr/lib/libvulkan.so.1; do
+		if [ -e "$candidate" ]; then
+			LIBVULKAN="$candidate"
+			break
+		fi
+	done
+fi
 if [ -z "$LIBVULKAN" ]; then
 	echo "libvulkan.so.1 not found; install your distro's Vulkan loader" >&2
 	exit 1
