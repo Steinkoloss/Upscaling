@@ -5,7 +5,10 @@
 	"client": [
 		"GameRendererMixin",
 		"SkyRendererMixin",
-		"VulkanFeatureSetsMixin"
+		"VulkanFeatureSetsMixin",
+		"VulkanConstMixin",
+		"FrontendGpuDeviceAccessor",
+		"VulkanCommandEncoderInvoker"
 	],
 	"injectors": {
 		"defaultRequire": 1

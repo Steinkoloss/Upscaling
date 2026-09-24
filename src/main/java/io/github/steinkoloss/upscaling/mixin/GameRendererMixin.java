@@ -8,7 +8,9 @@ import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import io.github.steinkoloss.upscaling.FrameState;
 import io.github.steinkoloss.upscaling.MotionVectors;
 import io.github.steinkoloss.upscaling.SceneTarget;
+import io.github.steinkoloss.upscaling.Jitter;
 import io.github.steinkoloss.upscaling.UpscalingConfig;
+import io.github.steinkoloss.upscaling.fsr.Fsr4Upscaler;
 import java.util.List;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.LevelRenderer;
@@ -70,7 +72,7 @@ abstract class GameRendererMixin {
 				SceneTarget.renderSize(this.mainRenderTarget.width, scale),
 				SceneTarget.renderSize(this.mainRenderTarget.height, scale),
 				this.mainRenderTarget.width,
-				UpscalingConfig.jitter()
+				UpscalingConfig.jitter() || Fsr4Upscaler.usable(this.mainRenderTarget.width, this.mainRenderTarget.height)
 		);
 		return original.call(buffer, rendered);
 	}
@@ -103,7 +105,24 @@ abstract class GameRendererMixin {
 		}
 
 		MotionVectors.compute(scene);
-		SceneTarget.upscale(scene, this.mainRenderTarget);
+		boolean upscaled = false;
+		if (Fsr4Upscaler.usable(this.mainRenderTarget.width, this.mainRenderTarget.height)) {
+			upscaled = Fsr4Upscaler.upscale(
+					scene,
+					MotionVectors.texture(),
+					this.mainRenderTarget,
+					Jitter.x(),
+					Jitter.y(),
+					!FrameState.hasPrevious(),
+					FrameState.frameTimeMs(),
+					FrameState.verticalFov(),
+					0.05f,
+					camera.depthFar
+			);
+		}
+		if (!upscaled) {
+			SceneTarget.upscale(scene, this.mainRenderTarget);
+		}
 		if (UpscalingConfig.debugView() != UpscalingConfig.DebugView.OFF) {
 			MotionVectors.drawDebug(scene, this.mainRenderTarget);
 		}
@@ -121,5 +140,6 @@ abstract class GameRendererMixin {
 	private void upscaling$close(CallbackInfo ci) {
 		SceneTarget.close();
 		MotionVectors.close();
+		Fsr4Upscaler.close();
 	}
 }

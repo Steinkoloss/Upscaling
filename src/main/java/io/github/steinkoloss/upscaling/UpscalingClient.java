@@ -20,6 +20,7 @@ public final class UpscalingClient implements ClientModInitializer {
 	public void onInitializeClient() {
 		KeyMapping toggle = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.upscaling.toggle", InputConstants.KEY_F8, CATEGORY));
 		KeyMapping cycle = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.upscaling.cycle_scale", InputConstants.KEY_F9, CATEGORY));
+		KeyMapping upscaler = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.upscaling.cycle_upscaler", InputConstants.KEY_F7, CATEGORY));
 		KeyMapping debug = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.upscaling.cycle_debug", InputConstants.KEY_F10, CATEGORY));
 
 		ClientLifecycleEvents.CLIENT_STARTED.register(client -> LOGGER.info(
@@ -33,6 +34,9 @@ public final class UpscalingClient implements ClientModInitializer {
 			while (cycle.consumeClick()) {
 				String preset = UpscalingConfig.cycleScale();
 				notify(client, "Render scale: " + preset + " (" + Math.round(UpscalingConfig.scale() * 100) + "%)");
+			}
+			while (upscaler.consumeClick()) {
+				notify(client, "Upscaler: " + UpscalingConfig.cycleUpscaler().displayName());
 			}
 			while (debug.consumeClick()) {
 				notify(client, "Debug view: " + UpscalingConfig.cycleDebugView().displayName());

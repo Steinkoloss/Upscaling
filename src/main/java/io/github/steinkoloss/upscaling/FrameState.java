@@ -22,6 +22,9 @@ public final class FrameState {
 	private static int currWidth;
 	private static int currHeight;
 	private static boolean hasPrevious;
+	private static float verticalFov;
+	private static long lastFrameNanos;
+	private static float frameTimeMs = 16.6f;
 
 	private FrameState() {
 	}
@@ -39,6 +42,13 @@ public final class FrameState {
 		currHeight = renderHeight;
 		currCameraPos = camera.pos;
 		currViewProj.set(projection).mul(camera.viewRotationMatrix);
+		// m11 = 1 / tan(fov / 2) for a perspective projection.
+		verticalFov = 2.0f * (float) Math.atan(1.0 / projection.m11());
+		long now = System.nanoTime();
+		if (lastFrameNanos != 0L) {
+			frameTimeMs = (now - lastFrameNanos) / 1.0e6f;
+		}
+		lastFrameNanos = now;
 
 		Matrix4f rendered = projection;
 		if (jitter) {
@@ -61,6 +71,14 @@ public final class FrameState {
 	/** Drops history, e.g. when upscaling is toggled. */
 	public static void reset() {
 		hasPrevious = false;
+	}
+
+	public static float verticalFov() {
+		return verticalFov;
+	}
+
+	public static float frameTimeMs() {
+		return frameTimeMs;
 	}
 
 	public static boolean hasPrevious() {

@@ -92,6 +92,11 @@ public final class MotionVectors {
 		}
 	}
 
+	/** This frame's motion vectors (RG16F, render resolution); valid after {@link #compute}. */
+	public static GpuTexture texture() {
+		return motionTexture;
+	}
+
 	/** Draws the selected debug view over {@code output}. */
 	public static void drawDebug(RenderTarget scene, RenderTarget output) {
 		try (RenderPass pass = RenderSystem.getDevice()
