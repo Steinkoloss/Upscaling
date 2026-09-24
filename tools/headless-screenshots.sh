@@ -64,7 +64,7 @@ fi
 grep -E 'Using graphics backend' "$LOG" || true
 
 # Let chunks load before capturing.
-sleep 20
+sleep "${SETTLE_SECONDS:-20}"
 WINDOW="$(xdotool search --name 'Minecraft' | head -1)"
 for key in "${KEYS[@]}"; do
 	xdotool key --window "$WINDOW" "$key"
