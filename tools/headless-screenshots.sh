@@ -21,6 +21,13 @@ DISPLAY_NUM="${DISPLAY_NUM:-:99}"
 LOG=build/headless-client.log
 mkdir -p build run
 
+# Runs save the player's position, so start every run from a pristine copy
+# kept in run/pristine-saves/ when one exists.
+if [ -d "run/pristine-saves/$WORLD" ]; then
+	rm -rf "run/saves/$WORLD"
+	mkdir -p run/saves
+	cp -r "run/pristine-saves/$WORLD" "run/saves/$WORLD"
+fi
 if [ ! -d "run/saves/$WORLD" ]; then
 	echo "no world at run/saves/$WORLD" >&2
 	exit 1
@@ -45,6 +52,8 @@ if ! xdpyinfo -display "$DISPLAY_NUM" >/dev/null 2>&1; then
 fi
 export DISPLAY="$DISPLAY_NUM"
 
+# Extra -D flags for the game JVM (e.g. -Dupscaling.debugSpin=30) via CLIENT_JVM_ARGS.
+export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} ${CLIENT_JVM_ARGS:-}"
 ./gradlew --no-daemon runClient -Pminecraft_version=${MC_VERSION:-26.3} --args="--quickPlaySingleplayer $WORLD" >"$LOG" 2>&1 &
 GRADLE_PID=$!
 cleanup() {
@@ -66,8 +75,13 @@ grep -E 'Using graphics backend' "$LOG" || true
 # Let chunks load before capturing.
 sleep "${SETTLE_SECONDS:-20}"
 WINDOW="$(xdotool search --name 'Minecraft' | head -1)"
+# Each argument is a key to tap, or down:<key> / up:<key> to hold and release one.
 for key in "${KEYS[@]}"; do
-	xdotool key --window "$WINDOW" "$key"
+	case "$key" in
+		down:*) xdotool keydown --window "$WINDOW" "${key#down:}" ;;
+		up:*) xdotool keyup --window "$WINDOW" "${key#up:}" ;;
+		*) xdotool key --window "$WINDOW" "$key" ;;
+	esac
 	sleep 4
 done
 

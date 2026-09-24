@@ -32,10 +32,15 @@ public final class SceneTarget {
 		return active ? target : null;
 	}
 
+	/** Render-resolution size of one dimension at the given scale. */
+	public static int renderSize(int outputSize, float scale) {
+		return Math.max(1, Math.round(outputSize * scale));
+	}
+
 	/** Sizes the scene target for this frame and starts redirecting the main target to it. */
 	public static void begin(int outputWidth, int outputHeight, float scale) {
-		int width = Math.max(1, Math.round(outputWidth * scale));
-		int height = Math.max(1, Math.round(outputHeight * scale));
+		int width = renderSize(outputWidth, scale);
+		int height = renderSize(outputHeight, scale);
 		if (target == null) {
 			// Same formats as MainTarget so every world pipeline stays compatible.
 			target = new TextureTarget("Upscaling Scene", width, height, GpuFormat.RGBA8_UNORM, GpuFormat.D32_FLOAT);
@@ -45,19 +50,21 @@ public final class SceneTarget {
 		active = true;
 	}
 
-	/** Stops redirecting and upscales the scene colour into {@code output}. */
-	public static void endAndUpscale(RenderTarget output) {
+	/** Stops redirecting the main target and returns the scene that was rendered. */
+	public static RenderTarget end() {
 		active = false;
-		if (target == null) {
-			return;
-		}
+		return target;
+	}
+
+	/** Upscales the scene colour into {@code output}. */
+	public static void upscale(RenderTarget scene, RenderTarget output) {
 		// Spike: plain bilinear stretch. This is the slot a temporal upscaler replaces.
 		try (RenderPass pass = RenderSystem.getDevice()
 				.createCommandEncoder()
 				.createRenderPass(() -> "Upscaling bilinear", output.getColorTextureView(), Optional.empty(), null, OptionalDouble.empty())) {
 			pass.setPipeline(RenderSystem.getCompiledPipeline(RenderPipelines.TRACY_BLIT));
 			RenderSystem.bindDefaultUniforms(pass);
-			pass.setUniform("InSampler", target.getColorTextureView(), RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
+			pass.setUniform("InSampler", scene.getColorTextureView(), RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
 			pass.draw(3, 1, 0, 0);
 		}
 	}

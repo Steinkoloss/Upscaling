@@ -1,5 +1,6 @@
 {
 	"key.category.upscaling.upscaling": "Upscaling",
 	"key.upscaling.toggle": "Toggle upscaling",
-	"key.upscaling.cycle_scale": "Cycle render scale"
+	"key.upscaling.cycle_scale": "Cycle render scale",
+	"key.upscaling.cycle_debug": "Cycle debug view"
 }

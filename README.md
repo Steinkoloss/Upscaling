@@ -5,16 +5,30 @@ upscales it. The goal is temporal upscaling (FSR 3.1, FSR 4 via
 [fsr4vk](https://github.com/dvj5411/fsr4vk)) on Minecraft's Vulkan renderer,
 on Linux first.
 
-## Status: spike (step 2 of the plan)
+## Status: step 3 of the plan (jitter + camera motion vectors)
 
-What works today, on Minecraft 26.3 with Fabric:
+What works today, on Minecraft 26.3 (including pre-releases) with Fabric:
 
 - The world renders into a reduced-resolution target and is stretched back to
   the window with a plain bilinear filter. The hand, screen effects, post
   effects and GUI still draw at full resolution on top.
 - `F8` toggles upscaling on/off, `F9` cycles render scale
   (Quality 67% / Balanced 59% / Performance 50% / Ultra Performance 33%).
-- JVM flags: `-Dupscaling.scale=0.5`, `-Dupscaling.enabled=false`.
+- Camera motion vectors reconstructed from the depth buffer every frame
+  (RG16F, render resolution, NDC offset to the previous frame, jitter excluded).
+  They cover camera rotation and movement; moving objects just get the camera's
+  motion for now.
+- Sub-pixel camera jitter (Halton 2,3, phase count scaled with the upscale ratio),
+  off by default until a temporal upscaler consumes it.
+- `F10` cycles debug views: motion vectors, orientation (reconstructed height:
+  red below the camera, green above, blue sky) and reprojection error (last
+  frame warped by the motion vectors minus this frame; near-black means right).
+- JVM flags: `-Dupscaling.scale=0.5`, `-Dupscaling.enabled=false`,
+  `-Dupscaling.jitter=true`, `-Dupscaling.debugView=motion|orientation|reprojection`,
+  and two test aids: `-Dupscaling.debugSpin=30` (turn the camera, degrees/second)
+  and `-Dupscaling.debugGlide=4` (slide back and forth over spawn, blocks/second).
+- Works alongside Sodium 0.9.3-alpha.1 and Distant Horizons 3.3.2 on the
+  Vulkan backend (DH's LODs render into the reduced-resolution target too).
 
 This is a bilinear stretch, not an upscaler: it looks worse than native by
 design. It proves the hook points and gives the temporal upscaler a slot.
@@ -35,9 +49,9 @@ real GPU hardware.
 
 1. Project setup. Done.
 2. Hook the Vulkan renderer, render the world at reduced resolution, bilinear
-   upscale. **Done (this spike).**
+   upscale. **Done.**
 3. Sub-pixel camera jitter + motion vectors (camera-only first, from depth
-   reprojection), with a debug view.
+   reprojection), with debug views. **Done.**
 4. FSR 3.1 backend through AMD's FidelityFX API (native library, called with
    Minecraft's Vulkan handles).
 5. fsr4vk built as a native Linux `.so`, swapped in behind the same API; enable
@@ -59,8 +73,14 @@ Needs JDK 25.
 ```
 
 `tools/headless-screenshots.sh` boots the dev client on a virtual display, joins
-a world from `run/saves/` and takes screenshots between keybind presses, so
-changes can be checked without a monitor or GPU.
+a world from `run/saves/` (reset from `run/pristine-saves/` each run) and takes
+screenshots between keybind presses, so changes can be checked without a monitor
+or GPU. Example, checking motion vectors while the camera turns:
+
+```sh
+CLIENT_JVM_ARGS="-Dupscaling.debugSpin=30 -Dupscaling.debugView=reprojection" \
+  tools/headless-screenshots.sh testworld F2 F10 F10 F2
+```
 
 ## License
 
