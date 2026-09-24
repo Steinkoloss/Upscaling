@@ -2,12 +2,14 @@ package io.github.steinkoloss.upscaling.api;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.logging.LogUtils;
 import io.github.steinkoloss.upscaling.FrameState;
 import io.github.steinkoloss.upscaling.Jitter;
 import io.github.steinkoloss.upscaling.MotionVectors;
 import io.github.steinkoloss.upscaling.SceneTarget;
 import io.github.steinkoloss.upscaling.UpscalingConfig;
 import io.github.steinkoloss.upscaling.fsr.Fsr4Upscaler;
+import org.slf4j.Logger;
 
 /**
  * Entry point for shader-pack loaders that render the world at a reduced scale and upscale it
@@ -21,7 +23,10 @@ import io.github.steinkoloss.upscaling.fsr.Fsr4Upscaler;
  * the loader keeps its own upscale whenever FSR 4 is off or unavailable.
  */
 public final class ShaderPackUpscaler {
+	private static final Logger LOGGER = LogUtils.getLogger();
 	private static boolean armed;
+	/** Last reported sizes and result, so the log says once when the hand-off starts or changes. */
+	private static String lastReport = "";
 
 	private ShaderPackUpscaler() {
 	}
@@ -54,6 +59,7 @@ public final class ShaderPackUpscaler {
 			}
 			MotionVectors.storeHistory(world.texture(), renderWidth, renderHeight);
 			FrameState.endFrame();
+			report(renderWidth, renderHeight, output, true);
 			return true;
 		}
 		boolean upscaled = Fsr4Upscaler.upscale(
@@ -72,6 +78,21 @@ public final class ShaderPackUpscaler {
 				0.05f,
 				FrameState.far());
 		FrameState.endFrame();
+		report(renderWidth, renderHeight, output, upscaled);
 		return upscaled;
+	}
+
+	private static void report(int renderWidth, int renderHeight, RenderTarget output, boolean upscaled) {
+		String report = renderWidth + "x" + renderHeight + " -> " + output.width + "x" + output.height
+				+ (upscaled ? "" : " failed");
+		if (!report.equals(lastReport)) {
+			lastReport = report;
+			if (upscaled) {
+				LOGGER.info("Upscaling: {} upscales the shader pack's frame {}",
+						UpscalingConfig.shaderPackTest() ? "the bilinear test stand-in" : "FSR 4", report);
+			} else {
+				LOGGER.warn("Upscaling: FSR 4 did not take the shader pack's frame {}; the pack's own upscale runs", report);
+			}
+		}
 	}
 }
