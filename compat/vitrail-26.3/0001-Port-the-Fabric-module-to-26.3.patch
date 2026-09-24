@@ -1,0 +1,225 @@
+From 05f23d76f1b78e77149630ca7d16ea98fccadad4 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 24 Sep 2026 01:33:49 +0000
+Subject: [PATCH 1/3] Port the Fabric module to 26.3
+
+LevelRenderer.render lost its DeltaTracker and model-view parameters in
+26.3; the model view NeoForge hands its frame graph event is
+cameraState.viewRotationMatrix, so FrameGraphMixin reads that. The main
+pass's lambda was split into executeSolid and executeClassicTransparency,
+whose calls now take the open RenderPass; LevelStagesMixin wraps the same
+calls NeoForge posts its stage events after. AfterLevelMixin targets the
+26.3 LevelRenderer.render descriptor. fabric.mod.json accepted only
+Minecraft below 26.3.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019Rd9hEeedfauYVxKQg5jqi
+---
+ .../vitrail/fabric/mixin/AfterLevelMixin.java | 10 ++-
+ .../vitrail/fabric/mixin/FrameGraphMixin.java | 17 +++--
+ .../fabric/mixin/LevelStagesMixin.java        | 69 +++++++++----------
+ fabric/src/main/resources/fabric.mod.json     |  2 +-
+ 4 files changed, 47 insertions(+), 51 deletions(-)
+
+diff --git a/fabric/src/main/java/dev/vitrail/fabric/mixin/AfterLevelMixin.java b/fabric/src/main/java/dev/vitrail/fabric/mixin/AfterLevelMixin.java
+index 8551610..1ff8a71 100644
+--- a/fabric/src/main/java/dev/vitrail/fabric/mixin/AfterLevelMixin.java
++++ b/fabric/src/main/java/dev/vitrail/fabric/mixin/AfterLevelMixin.java
+@@ -2,7 +2,6 @@
+ 
+ import dev.vitrail.platform.EngineStages;
+ 
+-import net.minecraft.client.DeltaTracker;
+ import net.minecraft.client.renderer.GameRenderer;
+ import org.spongepowered.asm.mixin.Mixin;
+ import org.spongepowered.asm.mixin.injection.At;
+@@ -24,14 +23,13 @@ public abstract class AfterLevelMixin {
+ 	@Inject(method = "renderLevel",
+ 			at = @At(value = "INVOKE",
+ 					target = "Lnet/minecraft/client/renderer/LevelRenderer;"
+-							+ "render(Lcom/mojang/blaze3d/resource/GraphicsResourceAllocator;"
+-							+ "Lnet/minecraft/client/DeltaTracker;Z"
++							+ "render(Lcom/mojang/blaze3d/resource/GraphicsResourceAllocator;Z"
+ 							+ "Lnet/minecraft/client/renderer/state/level/CameraRenderState;"
+-							+ "Lorg/joml/Matrix4fc;Lcom/mojang/blaze3d/buffers/GpuBufferSlice;"
+-							+ "Lorg/joml/Vector4f;Z)V",
++							+ "Lcom/mojang/renderpearl/api/buffers/GpuBufferSlice;"
++							+ "Lorg/joml/Vector4f;ZZ)V",
+ 					shift = At.Shift.AFTER),
+ 			require = 1)
+-	private void vitrail$afterLevel(DeltaTracker deltaTracker, CallbackInfo ci) {
++	private void vitrail$afterLevel(CallbackInfo ci) {
+ 		EngineStages.afterLevel();
+ 	}
+ }
+diff --git a/fabric/src/main/java/dev/vitrail/fabric/mixin/FrameGraphMixin.java b/fabric/src/main/java/dev/vitrail/fabric/mixin/FrameGraphMixin.java
+index 49a51d7..a8c0a77 100644
+--- a/fabric/src/main/java/dev/vitrail/fabric/mixin/FrameGraphMixin.java
++++ b/fabric/src/main/java/dev/vitrail/fabric/mixin/FrameGraphMixin.java
+@@ -2,12 +2,10 @@
+ 
+ import dev.vitrail.platform.EngineStages;
+ 
+-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+ import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
+-import net.minecraft.client.DeltaTracker;
++import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+ import net.minecraft.client.renderer.LevelRenderer;
+ import net.minecraft.client.renderer.state.level.CameraRenderState;
+-import org.joml.Matrix4fc;
+ import org.joml.Vector4f;
+ import org.spongepowered.asm.mixin.Mixin;
+ import org.spongepowered.asm.mixin.injection.At;
+@@ -19,8 +17,9 @@
+  * where NeoForge posts its frame graph setup event.
+  * <p>
+  * At the head of the method rather than in the middle of the graph being built, which is a few
+- * statements earlier than the event and reads the same two values: both are parameters of this
+- * method and nothing between the two points writes to either. What the position of the event buys
++ * statements earlier than the event and reads the same two values. Since 26.3 the model view is no
++ * longer a parameter: NeoForge hands its event {@code cameraState.viewRotationMatrix}, which is what
++ * LevelRenderer multiplies onto the model view stack, and nothing between the two points writes to it. What the position of the event buys
+  * there is the targets it also carries, and this engine puts no pass of its own in the
+  * graph, so nothing here needs them.
+  */
+@@ -28,9 +27,9 @@
+ public abstract class FrameGraphMixin {
+ 
+ 	@Inject(method = "render", at = @At("HEAD"), require = 1)
+-	private void vitrail$frameGraphSetup(GraphicsResourceAllocator allocator, DeltaTracker deltaTracker,
+-			boolean renderOutline, CameraRenderState cameraState, Matrix4fc modelViewMatrix,
+-			GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky, CallbackInfo ci) {
+-		EngineStages.frameGraphSetup(modelViewMatrix, cameraState.pos);
++	private void vitrail$frameGraphSetup(GraphicsResourceAllocator allocator, boolean renderOutline,
++			CameraRenderState cameraState, GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky,
++			boolean consistentDepthRequired, CallbackInfo ci) {
++		EngineStages.frameGraphSetup(cameraState.viewRotationMatrix, cameraState.pos);
+ 	}
+ }
+diff --git a/fabric/src/main/java/dev/vitrail/fabric/mixin/LevelStagesMixin.java b/fabric/src/main/java/dev/vitrail/fabric/mixin/LevelStagesMixin.java
+index 7a21d51..cde281d 100644
+--- a/fabric/src/main/java/dev/vitrail/fabric/mixin/LevelStagesMixin.java
++++ b/fabric/src/main/java/dev/vitrail/fabric/mixin/LevelStagesMixin.java
+@@ -4,7 +4,9 @@
+ 
+ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+-import com.mojang.blaze3d.textures.GpuSampler;
++import com.mojang.renderpearl.api.commands.RenderPass;
++import com.mojang.renderpearl.api.textures.GpuSampler;
++import com.mojang.renderpearl.api.textures.GpuTextureView;
+ import net.minecraft.client.renderer.LevelRenderer;
+ import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
+ import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
+@@ -16,64 +18,61 @@
+  * The three stages the world's main pass is cut into, reached on Fabric where NeoForge reaches them
+  * by event.
+  * <p>
+- * All three are inside one lambda, the body {@code addMainPass} hands to {@code FramePass.executes},
+- * and NeoForge posts its three events from that same body: the calls this wraps are the very lines
+- * its patch sits between. Naming a lambda in a mixin is what it costs, and it is what Iris pays too
+- * ({@code MojLambdas.RENDER_MAIN_PASS}). The name holds because the game jar of one version is
+- * fixed, and it was read off that jar rather than guessed: {@code addMainPass} carries exactly one
+- * lambda in 26.2, and the compiler numbers it per method, so it is {@code $0} in the bare game and
+- * {@code $0} in the NeoForge one as well.
++ * In 26.2 all three sat in one lambda of {@code addMainPass}. From 26.3 the opaque half is the method
++ * {@code executeSolid} and the translucent half {@code executeClassicTransparency}, and NeoForge's
++ * patch posts its events from those two bodies: {@code AfterOpaqueBlocks} right after the opaque
++ * chunk group, {@code AfterOpaqueFeatures} right after {@code executeSolid}, and
++ * {@code AfterTranslucentFeatures} right after {@code executeTranslucent}. The wraps below sit on the
++ * very same calls, and run the call and then the stage, because every one of these stages is an
++ * "after". Like NeoForge's events, they run inside the pass the game has open.
+  * <p>
+- * The wraps run the call and then the stage, never the other way round, because every one of these
+- * stages is an "after". {@code require = 1} on each: an injector that stopped binding would leave a
+- * frame that draws the world and skips one stage of the pack's chain, which is a picture rather than
+- * a crash, and this whole package exists to keep those apart.
++ * {@code require = 1} on each: an injector that stopped binding would leave a frame that draws the
++ * world and skips one stage of the pack's chain, which is a picture rather than a crash, and this
++ * whole package exists to keep those apart.
+  * <p>
+- * Two of the names read the wrong way round and it is worth having the order written out: the opaque
+- * chunk group, then the opaque blocks stage, then {@code executeSolid}, then the opaque features
+- * stage, then {@code executeTranslucent}, then the translucent features stage, then the outlines and
+- * the translucent chunk group. The features are drawn before the water.
++ * The order, since two of the names read the wrong way round: the opaque chunk group, the opaque
++ * blocks stage, {@code executeSolid}, the opaque features stage, then in the transparency pass
++ * {@code executeTranslucent}, the translucent features stage, and the translucent chunk group. The
++ * features are drawn before the water.
+  */
+ @Mixin(LevelRenderer.class)
+ public abstract class LevelStagesMixin {
+ 
+-	/**
+-	 * The first of the two {@code renderGroup} calls, which is the opaque one. Ordinal rather than a
+-	 * test on the group, so that the binding fails loudly if the pass ever stops making both calls
+-	 * from here.
+-	 */
+-	@WrapOperation(method = "lambda$addMainPass$0",
++	/** {@code executeSolid} makes one {@code renderGroup} call, the opaque one. */
++	@WrapOperation(method = "executeSolid",
+ 			at = @At(value = "INVOKE",
+ 					target = "Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;"
+ 							+ "renderGroup(Lnet/minecraft/client/renderer/chunk/ChunkSectionLayerGroup;"
+-							+ "Lcom/mojang/blaze3d/textures/GpuSampler;)V",
+-					ordinal = 0),
++							+ "Lcom/mojang/renderpearl/api/commands/RenderPass;"
++							+ "Lcom/mojang/renderpearl/api/textures/GpuSampler;"
++							+ "Lcom/mojang/renderpearl/api/textures/GpuTextureView;Z)V"),
+ 			require = 1)
+-	private void vitrail$afterOpaqueBlocks(ChunkSectionsToRender sections,
+-			ChunkSectionLayerGroup group, GpuSampler sampler, Operation<Void> original) {
+-		original.call(sections, group, sampler);
++	private void vitrail$afterOpaqueBlocks(ChunkSectionsToRender sections, ChunkSectionLayerGroup group,
++			RenderPass renderPass, GpuSampler sampler, GpuTextureView blockAtlas, boolean wireframe,
++			Operation<Void> original) {
++		original.call(sections, group, renderPass, sampler, blockAtlas, wireframe);
+ 		EngineStages.afterOpaqueBlocks();
+ 	}
+ 
+-	@WrapOperation(method = "lambda$addMainPass$0",
++	@WrapOperation(method = "executeSolid",
+ 			at = @At(value = "INVOKE",
+ 					target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;"
+-							+ "executeSolid()V"),
++							+ "executeSolid(Lcom/mojang/renderpearl/api/commands/RenderPass;)V"),
+ 			require = 1)
+-	private void vitrail$afterOpaqueFeatures(FeatureRenderDispatcher.PreparedFrame frame,
++	private void vitrail$afterOpaqueFeatures(FeatureRenderDispatcher.PreparedFrame frame, RenderPass renderPass,
+ 			Operation<Void> original) {
+-		original.call(frame);
++		original.call(frame, renderPass);
+ 		EngineStages.afterOpaqueFeatures();
+ 	}
+ 
+-	@WrapOperation(method = "lambda$addMainPass$0",
++	@WrapOperation(method = "executeClassicTransparency",
+ 			at = @At(value = "INVOKE",
+ 					target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;"
+-							+ "executeTranslucent()V"),
++							+ "executeTranslucent(Lcom/mojang/renderpearl/api/commands/RenderPass;)V"),
+ 			require = 1)
+-	private void vitrail$afterTranslucentFeatures(FeatureRenderDispatcher.PreparedFrame frame,
++	private void vitrail$afterTranslucentFeatures(FeatureRenderDispatcher.PreparedFrame frame, RenderPass renderPass,
+ 			Operation<Void> original) {
+-		original.call(frame);
++		original.call(frame, renderPass);
+ 		EngineStages.afterTranslucentFeatures();
+ 	}
+ }
+diff --git a/fabric/src/main/resources/fabric.mod.json b/fabric/src/main/resources/fabric.mod.json
+index fe3306e..b195bcf 100644
+--- a/fabric/src/main/resources/fabric.mod.json
++++ b/fabric/src/main/resources/fabric.mod.json
+@@ -29,7 +29,7 @@
+ 	],
+ 	"depends": {
+ 		"fabricloader": ">=${fabric_loader_min_version}",
+-		"minecraft": ">=${minecraft_version} <26.3",
++		"minecraft": "~${minecraft_version}-",
+ 		"sodium": "0.9.x",
+ 		"fabric-key-mapping-api-v1": "*",
+ 		"fabric-lifecycle-events-v1": "*"
+-- 
+2.43.0
+

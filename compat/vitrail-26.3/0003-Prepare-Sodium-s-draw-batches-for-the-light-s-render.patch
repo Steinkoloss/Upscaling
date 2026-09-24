@@ -1,0 +1,48 @@
+From 4f7e72628963343c16034326564ebac7fd5e8b0e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 24 Sep 2026 02:48:13 +0000
+Subject: [PATCH 3/3] Prepare Sodium's draw batches for the light's render
+ lists
+
+Terrain cast no shadows on 26.3: the shadow map held only what is drawn
+outside Sodium. Sodium for 26.3 builds a region's draw commands in
+prepareChunkRendering rather than inside the draw, and the shadow walk
+replaces the camera's render lists with the light's, which clears every
+region's batch. The light's draws then found every batch empty. Run
+prepareChunkRendering for the light's lists inside the shadow stage,
+where face culling is already lifted, before drawing them.
+
+Checked on a controlled superflat scene against Vitrail 0.11.0-beta on
+26.2: the shadow map goes from ~900 drawn texels to ~1.2M, and the slab
+and log shadows match 26.2.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019Rd9hEeedfauYVxKQg5jqi
+---
+ .../main/java/dev/vitrail/sodium/ShadowTerrain.java    | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/common/src/main/java/dev/vitrail/sodium/ShadowTerrain.java b/common/src/main/java/dev/vitrail/sodium/ShadowTerrain.java
+index c6be9f9..9cebefa 100644
+--- a/common/src/main/java/dev/vitrail/sodium/ShadowTerrain.java
++++ b/common/src/main/java/dev/vitrail/sodium/ShadowTerrain.java
+@@ -316,6 +316,16 @@ private static void draw(SodiumWorldRenderer renderer, Minecraft minecraft, Vec3
+ 				((GameRendererStorage) minecraft.gameRenderer).sodium$getProjectionMatrix();
+ 		ChunkRenderMatrices matrices = new ChunkRenderMatrices(projection, MODEL_VIEW);
+ 
++		// Sodium for 26.3 no longer builds a region's draw commands inside the draw: it fills them
++		// in prepareChunkRendering, from whatever render lists stand, and the camera's call to it ran
++		// long before this stage. The walk above has since put the light's lists in their place,
++		// and resetting a list clears every batch its region holds, so without a prepare of its own
++		// the light's draws below find nothing in any batch and the shadow map keeps only what is
++		// drawn outside Sodium. Run inside the shadow stage so the face culling is lifted for it, as
++		// the light needs every face. The camera's walk at the top of the next frame rebuilds its
++		// lists, which clears these again, and its own prepare refills them.
++		TerrainDraw.shadowPass(() -> renderer.prepareChunkRendering(matrices, camera.x, camera.y, camera.z));
++
+ 		// The game's own chunk sampler, mipmapped and clamped, and it is NOT what the pack's shadow
+ 		// programs read the atlas through: the renderer hands this to begin, where the chunk
+ 		// renderer mixin settles the pack's sampler for every pass, this one included, so the shadow
+-- 
+2.43.0
+
