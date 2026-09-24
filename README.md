@@ -20,9 +20,17 @@ On Minecraft 26.3 (including pre-releases) with Fabric, Vulkan backend:
   automatically when FSR 4 runs). Moving objects (mobs, particles, water) only
   get the camera's motion so far.
 - Works alongside Sodium 0.9.3-alpha.1 and Distant Horizons 3.3.2.
-- Steps aside while a [Vitrail](https://github.com/avpbynf/Vitrail-Shaders)
-  shader pack is drawing: the world then renders natively and Vitrail's own
-  render scale applies. (Feeding a pack's output to FSR is future work.)
+- FSR 4 with [Vitrail](https://github.com/avpbynf/Vitrail-Shaders) shader packs.
+  While a pack draws, this mod leaves the render targets alone. Set the scale in
+  Vitrail's own Render Scale option instead of the mod's slider. Below 100 %,
+  Vitrail hands its finished, scaled frame and its depth to this mod, which
+  jitters the camera and runs FSR 4 instead of Vitrail's FSR 1 upscale. This
+  needs the patched Vitrail build in `compat/vitrail-26.3/` (patch 4 adds the
+  hand-off). Turn the pack's own TAA off, since FSR 4 does the anti-aliasing and
+  both jittering at once smears. At 100 % the pack renders natively without FSR
+  (no Native AA with packs yet). The hand-off was checked headless with a
+  bilinear stand-in (`-Dupscaling.shaderPackTest=true`): the debug views line up
+  with Complementary Reimagined's depth.
 
 **What has and has not been verified.** Everything was built and run headless
 on Mesa's lavapipe (software Vulkan): the device features get enabled, fsr4vk

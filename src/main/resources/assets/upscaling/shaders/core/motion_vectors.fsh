@@ -10,6 +10,6 @@ layout(location = 0) in vec2 texCoord;
 layout(location = 0) out vec4 fragColor;
 
 void main() {
-    float depth = texture(DepthSampler, texCoord).r;
+    float depth = deviceDepth(texture(DepthSampler, texCoord).r);
     fragColor = vec4(motionVectorNdc(uvToNdc(texCoord), depth), 0.0, 1.0);
 }

@@ -14,7 +14,7 @@ layout(location = 0) out vec4 fragColor;
 
 void main() {
     int mode = int(Params.x + 0.5);
-    float depth = texture(DepthSampler, texCoord).r;
+    float depth = deviceDepth(texture(DepthSampler, texCoord).r);
     vec3 scene = texture(CurrColorSampler, texCoord).rgb;
 
     if (mode == 1) {

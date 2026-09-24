@@ -90,6 +90,15 @@ public final class Fsr4Upscaler {
 			.withColorTargetState(new ColorTargetState(Optional.empty(), GpuFormat.RGBA16_FLOAT, ColorTargetState.WRITE_ALL))
 			.withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
 			.build();
+	private static final RenderPipeline FORWARD_DEPTH_TO_R32F = RenderPipeline.builder()
+			.withLocation(Identifier.fromNamespaceAndPath("upscaling", "pipeline/forward_depth_to_r32f"))
+			.withVertexShader("core/screenquad")
+			.withFragmentShader(Identifier.fromNamespaceAndPath("upscaling", "core/depth_to_r32f"))
+			.withShaderDefine("FORWARD_DEPTH")
+			.withBindGroupLayout(DEPTH_SAMPLER)
+			.withColorTargetState(new ColorTargetState(Optional.empty(), GpuFormat.R32_FLOAT, ColorTargetState.WRITE_ALL))
+			.withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
+			.build();
 	private static final RenderPipeline DEPTH_TO_R32F = RenderPipeline.builder()
 			.withLocation(Identifier.fromNamespaceAndPath("upscaling", "pipeline/depth_to_r32f"))
 			.withVertexShader("core/screenquad")
@@ -168,8 +177,19 @@ public final class Fsr4Upscaler {
 	 */
 	public static boolean upscale(RenderTarget scene, GpuTexture motionVectors, RenderTarget target, float jitterX, float jitterY,
 			boolean reset, float frameTimeMs, float verticalFov, float near, float far) {
-		int rw = scene.width;
-		int rh = scene.height;
+		return upscale(scene.getColorTextureView(), scene.getDepthTextureView(), false, scene.width, scene.height,
+				motionVectors, target, jitterX, jitterY, reset, frameTimeMs, verticalFov, near, far);
+	}
+
+	/**
+	 * Upscales a colour image at render resolution into {@code target}.
+	 *
+	 * @param forwardDepth true when {@code depth} holds forward depth (a shader-pack loader's copy),
+	 *                     false for the game's reverse-Z depth buffer
+	 */
+	public static boolean upscale(GpuTextureView colorInput, GpuTextureView depthInput, boolean forwardDepth, int rw, int rh,
+			GpuTexture motionVectors, RenderTarget target, float jitterX, float jitterY, boolean reset, float frameTimeMs,
+			float verticalFov, float near, float far) {
 		int ow = target.width;
 		int oh = target.height;
 		if (rw < MIN_SIZE || rh < MIN_SIZE) {
@@ -178,7 +198,7 @@ public final class Fsr4Upscaler {
 		try {
 			boolean newContext = ensureContext(ow, oh);
 			ensureImages(rw, rh, ow, oh);
-			convertInputs(scene);
+			convertInputs(colorInput, depthInput, forwardDepth);
 			if (!dispatch(motionVectors, rw, rh, ow, oh, jitterX, jitterY, reset || newContext, frameTimeMs, verticalFov, near, far)) {
 				fail("dispatch was rejected (see the fsr4vk messages above)");
 				return false;
@@ -334,16 +354,16 @@ public final class Fsr4Upscaler {
 		return new Image(texture, gpu.createTextureView(texture));
 	}
 
-	private static void convertInputs(RenderTarget scene) {
+	private static void convertInputs(GpuTextureView colorInput, GpuTextureView depthInput, boolean forwardDepth) {
 		var encoder = RenderSystem.getDevice().createCommandEncoder();
 		try (RenderPass pass = encoder.createRenderPass(() -> "Upscaling FSR color input", color.view(), Optional.empty())) {
 			pass.setPipeline(RenderSystem.getCompiledPipeline(COLOR_TO_RGBA16F));
-			pass.setUniform("InSampler", scene.getColorTextureView(), RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
+			pass.setUniform("InSampler", colorInput, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
 			pass.draw(3, 1, 0, 0);
 		}
 		try (RenderPass pass = encoder.createRenderPass(() -> "Upscaling FSR depth input", depth.view(), Optional.empty())) {
-			pass.setPipeline(RenderSystem.getCompiledPipeline(DEPTH_TO_R32F));
-			pass.setUniform("DepthSampler", scene.getDepthTextureView(), RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
+			pass.setPipeline(RenderSystem.getCompiledPipeline(forwardDepth ? FORWARD_DEPTH_TO_R32F : DEPTH_TO_R32F));
+			pass.setUniform("DepthSampler", depthInput, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
 			pass.draw(3, 1, 0, 0);
 		}
 	}

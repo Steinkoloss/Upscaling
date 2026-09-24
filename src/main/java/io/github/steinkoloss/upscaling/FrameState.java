@@ -23,6 +23,7 @@ public final class FrameState {
 	private static int currHeight;
 	private static boolean hasPrevious;
 	private static float verticalFov;
+	private static float far = 1024.0f;
 	private static long lastFrameNanos;
 	private static float frameTimeMs = 16.6f;
 
@@ -41,6 +42,7 @@ public final class FrameState {
 		currWidth = renderWidth;
 		currHeight = renderHeight;
 		currCameraPos = camera.pos;
+		far = camera.depthFar;
 		currViewProj.set(projection).mul(camera.viewRotationMatrix);
 		// m11 = 1 / tan(fov / 2) for a perspective projection.
 		verticalFov = 2.0f * (float) Math.atan(1.0 / projection.m11());
@@ -75,6 +77,10 @@ public final class FrameState {
 
 	public static float verticalFov() {
 		return verticalFov;
+	}
+
+	public static float far() {
+		return far;
 	}
 
 	public static float frameTimeMs() {

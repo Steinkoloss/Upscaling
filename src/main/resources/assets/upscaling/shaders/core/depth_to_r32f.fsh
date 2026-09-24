@@ -11,5 +11,10 @@ layout(location = 0) in vec2 texCoord;
 layout(location = 0) out vec4 fragColor;
 
 void main() {
-    fragColor = vec4(texture(DepthSampler, texCoord).r, 0.0, 0.0, 1.0);
+    float depth = texture(DepthSampler, texCoord).r;
+#ifdef FORWARD_DEPTH
+    // Shader-pack loaders keep forward depth; the FSR context is created for reverse-Z.
+    depth = 1.0 - depth;
+#endif
+    fragColor = vec4(depth, 0.0, 0.0, 1.0);
 }

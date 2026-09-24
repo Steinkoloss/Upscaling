@@ -58,13 +58,18 @@ public final class SceneTarget {
 
 	/** Upscales the scene colour into {@code output}. */
 	public static void upscale(RenderTarget scene, RenderTarget output) {
+		upscale(scene.getColorTextureView(), output);
+	}
+
+	/** Bilinear-stretches {@code color} over {@code output}. */
+	public static void upscale(com.mojang.renderpearl.api.textures.GpuTextureView color, RenderTarget output) {
 		// Spike: plain bilinear stretch. This is the slot a temporal upscaler replaces.
 		try (RenderPass pass = RenderSystem.getDevice()
 				.createCommandEncoder()
 				.createRenderPass(() -> "Upscaling bilinear", output.getColorTextureView(), Optional.empty(), null, OptionalDouble.empty())) {
 			pass.setPipeline(RenderSystem.getCompiledPipeline(RenderPipelines.TRACY_BLIT));
 			RenderSystem.bindDefaultUniforms(pass);
-			pass.setUniform("InSampler", scene.getColorTextureView(), RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
+			pass.setUniform("InSampler", color, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
 			pass.draw(3, 1, 0, 0);
 		}
 	}

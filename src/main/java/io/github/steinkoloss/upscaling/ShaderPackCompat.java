@@ -10,8 +10,10 @@ import org.slf4j.Logger;
 /**
  * Stays out of the way of shader-pack loaders. Vitrail draws the world through its
  * own chain of window-sized targets and reads the game's main target while doing
- * so; handing it the reduced-size scene target instead produces garbage. Vitrail
- * has its own render scale, so while it draws a pack this mod renders natively.
+ * so; handing it the reduced-size scene target instead produces garbage. So while
+ * it draws a pack this mod leaves the targets alone and Vitrail's own render scale
+ * applies; below 100 % Vitrail hands its scaled frame to
+ * {@link io.github.steinkoloss.upscaling.api.ShaderPackUpscaler} for FSR 4.
  *
  * <p>Looked up by reflection so Vitrail stays an optional, undeclared dependency.
  */
@@ -36,7 +38,7 @@ public final class ShaderPackCompat {
 		if (active != lastState) {
 			lastState = active;
 			LOGGER.info("Upscaling: {}", active
-					? "a Vitrail shader pack is drawing; rendering natively (use Vitrail's own render scale)"
+					? "a Vitrail shader pack is drawing; Vitrail's render scale applies (FSR 4 upscales it below 100%)"
 					: "no shader pack is drawing; upscaling applies again");
 		}
 		return active;

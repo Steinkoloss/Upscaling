@@ -191,6 +191,14 @@ public final class UpscalingConfig {
 		return Boolean.parseBoolean(System.getProperty("upscaling.fsr4.allowSoftware", "false"));
 	}
 
+	/**
+	 * Test aid: drives the shader-pack path (jitter, motion vectors, hand-off) with a bilinear
+	 * stretch instead of FSR 4, for machines that cannot run FSR 4.
+	 */
+	public static boolean shaderPackTest() {
+		return Boolean.parseBoolean(System.getProperty("upscaling.shaderPackTest", "false"));
+	}
+
 	public static boolean fsr4ProviderLog() {
 		return Boolean.parseBoolean(System.getProperty("upscaling.fsr4.log", "false"));
 	}

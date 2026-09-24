@@ -79,15 +79,25 @@ public final class MotionVectors {
 
 	/** Writes camera motion vectors for {@code scene} (which must hold this frame's depth). */
 	public static void compute(RenderTarget scene) {
-		ensureResources(scene.width, scene.height);
-		uploadUniforms(UpscalingConfig.debugView().ordinal());
+		compute(scene.getDepthTextureView(), scene.width, scene.height, false);
+	}
+
+	/**
+	 * Writes camera motion vectors from a depth image at render resolution.
+	 *
+	 * @param forwardDepth true when the image holds forward depth (0 near, 1 far), as shader-pack
+	 *                     loaders keep it; false for the game's reverse-Z depth buffer
+	 */
+	public static void compute(GpuTextureView depth, int width, int height, boolean forwardDepth) {
+		ensureResources(width, height);
+		uploadUniforms(UpscalingConfig.debugView().ordinal(), forwardDepth);
 
 		try (RenderPass pass = RenderSystem.getDevice()
 				.createCommandEncoder()
 				.createRenderPass(() -> "Upscaling motion vectors", motionView, Optional.empty())) {
 			pass.setPipeline(RenderSystem.getCompiledPipeline(MOTION_PIPELINE));
 			pass.setUniform("Reprojection", ubo);
-			pass.setUniform("DepthSampler", scene.getDepthTextureView(), nearest());
+			pass.setUniform("DepthSampler", depth, nearest());
 			pass.draw(3, 1, 0, 0);
 		}
 	}
@@ -99,14 +109,19 @@ public final class MotionVectors {
 
 	/** Draws the selected debug view over {@code output}. */
 	public static void drawDebug(RenderTarget scene, RenderTarget output) {
+		drawDebug(scene.getDepthTextureView(), scene.getColorTextureView(), output);
+	}
+
+	/** Draws the selected debug view over {@code output}, from any depth and colour image at render resolution. */
+	public static void drawDebug(GpuTextureView depth, GpuTextureView color, RenderTarget output) {
 		try (RenderPass pass = RenderSystem.getDevice()
 				.createCommandEncoder()
 				.createRenderPass(() -> "Upscaling debug view", output.getColorTextureView(), Optional.empty(), null, OptionalDouble.empty())) {
 			pass.setPipeline(RenderSystem.getCompiledPipeline(DEBUG_PIPELINE));
 			pass.setUniform("Reprojection", ubo);
-			pass.setUniform("DepthSampler", scene.getDepthTextureView(), nearest());
+			pass.setUniform("DepthSampler", depth, nearest());
 			pass.setUniform("MotionSampler", motionView, nearest());
-			pass.setUniform("CurrColorSampler", scene.getColorTextureView(), linear());
+			pass.setUniform("CurrColorSampler", color, linear());
 			pass.setUniform("PrevColorSampler", historyView, linear());
 			pass.draw(3, 1, 0, 0);
 		}
@@ -114,9 +129,13 @@ public final class MotionVectors {
 
 	/** Keeps this frame's scene colour for the reprojection-error view. */
 	public static void storeHistory(RenderTarget scene) {
+		storeHistory(scene.getColorTexture(), scene.width, scene.height);
+	}
+
+	public static void storeHistory(GpuTexture color, int width, int height) {
 		RenderSystem.getDevice()
 				.createCommandEncoder()
-				.copyTextureToTexture(scene.getColorTexture(), historyTexture, 0, 0, 0, 0, 0, scene.width, scene.height);
+				.copyTextureToTexture(color, historyTexture, 0, 0, 0, 0, 0, width, height);
 	}
 
 	public static void close() {
@@ -156,7 +175,7 @@ public final class MotionVectors {
 		FrameState.reset();
 	}
 
-	private static void uploadUniforms(int debugMode) {
+	private static void uploadUniforms(int debugMode, boolean forwardDepth) {
 		Vec3 delta = FrameState.cameraDelta();
 		try (MemoryStack stack = MemoryStack.stackPush()) {
 			ByteBuffer data = Std140Builder.onStack(stack, UBO_SIZE)
@@ -164,7 +183,7 @@ public final class MotionVectors {
 					.putMat4f(FrameState.currViewProj())
 					.putMat4f(FrameState.prevViewProj())
 					.putVec4((float) delta.x, (float) delta.y, (float) delta.z, 0.0f)
-					.putVec4(debugMode, 20.0f, 0.0f, 0.0f)
+					.putVec4(debugMode, 20.0f, forwardDepth ? 1.0f : 0.0f, 0.0f)
 					.get();
 			RenderSystem.getDevice().createCommandEncoder().writeToBuffer(ubo.slice(), data);
 		}

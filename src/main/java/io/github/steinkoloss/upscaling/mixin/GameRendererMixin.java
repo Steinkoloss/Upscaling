@@ -11,8 +11,10 @@ import io.github.steinkoloss.upscaling.SceneTarget;
 import io.github.steinkoloss.upscaling.ShaderPackCompat;
 import io.github.steinkoloss.upscaling.Jitter;
 import io.github.steinkoloss.upscaling.UpscalingConfig;
+import io.github.steinkoloss.upscaling.api.ShaderPackUpscaler;
 import io.github.steinkoloss.upscaling.fsr.Fsr4Upscaler;
 import java.util.List;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.PostChain;
@@ -61,11 +63,26 @@ abstract class GameRendererMixin {
 			)
 	)
 	private GpuBufferSlice upscaling$jitterProjection(ProjectionMatrixBuffer buffer, Matrix4f projection, Operation<GpuBufferSlice> original) {
+		CameraRenderState camera = this.gameRenderState.levelRenderState.cameraRenderState;
+		if (this.upscaling$shaderPackFsrThisFrame()) {
+			// A shader-pack loader (Vitrail) has already shrunk the main target for its render
+			// scale and captures the matrix passed here as the pack's projection: jitter it, and
+			// let ShaderPackUpscaler run FSR 4 when the loader offers its scaled frame.
+			Matrix4f rendered = FrameState.beginFrame(
+					projection,
+					camera,
+					this.mainRenderTarget.width,
+					this.mainRenderTarget.height,
+					Minecraft.getInstance().getWindow().getWidth(),
+					true);
+			ShaderPackUpscaler.arm(true);
+			return original.call(buffer, rendered);
+		}
+		ShaderPackUpscaler.arm(false);
 		if (!this.upscaling$scaledThisFrame()) {
 			FrameState.reset();
 			return original.call(buffer, projection);
 		}
-		CameraRenderState camera = this.gameRenderState.levelRenderState.cameraRenderState;
 		float scale = UpscalingConfig.scale();
 		Matrix4f rendered = FrameState.beginFrame(
 				projection,
@@ -138,6 +155,21 @@ abstract class GameRendererMixin {
 	@Unique
 	private boolean upscaling$scaledThisFrame() {
 		return UpscalingConfig.enabled() && this.appliedPostEffects.isEmpty() && !ShaderPackCompat.shaderPackActive();
+	}
+
+	/**
+	 * Whether FSR 4 should upscale a shader pack's frame: a Vitrail pack is drawing, Vitrail's own
+	 * render scale has shrunk the main target below the window, and FSR 4 is selected and usable.
+	 */
+	@Unique
+	private boolean upscaling$shaderPackFsrThisFrame() {
+		if (!UpscalingConfig.enabled() || UpscalingConfig.upscaler() != UpscalingConfig.Upscaler.FSR4
+				|| !ShaderPackCompat.shaderPackActive()) {
+			return false;
+		}
+		var window = Minecraft.getInstance().getWindow();
+		return this.mainRenderTarget.width < window.getWidth()
+				&& (UpscalingConfig.shaderPackTest() || Fsr4Upscaler.usable(window.getWidth(), window.getHeight()));
 	}
 
 	@Inject(method = "close", at = @At("TAIL"))

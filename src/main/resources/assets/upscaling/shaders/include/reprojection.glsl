@@ -8,8 +8,13 @@ layout(std140) uniform Reprojection {
     mat4 CurrViewProj;
     mat4 PrevViewProj;
     vec4 CameraDelta;   // xyz: current minus previous camera position
-    vec4 Params;        // x: debug mode, y: motion vector display gain
+    vec4 Params;        // x: debug mode, y: motion vector display gain, z: 1 if depth is forward
 };
+
+// The game's depth buffer is reverse-Z; shader-pack loaders keep a forward copy (1 - d).
+float deviceDepth(float sampled) {
+    return Params.z > 0.5 ? 1.0 - sampled : sampled;
+}
 
 // Minecraft uses reverse Z: the far plane (and the cleared sky) is depth 0.
 bool isSky(float depth) {
