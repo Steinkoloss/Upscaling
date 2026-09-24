@@ -1,14 +1,22 @@
 package io.github.steinkoloss.upscaling;
 
+import com.mojang.logging.LogUtils;
 import io.github.steinkoloss.upscaling.fsr.FfxApi;
+import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Properties;
 import net.fabricmc.loader.api.FabricLoader;
+import org.slf4j.Logger;
 
 /**
- * Runtime settings. For now these come from JVM properties and keybinds only;
- * a real options screen comes later.
+ * Runtime settings. The user-facing ones (on/off, upscaler, render scale,
+ * sharpness) are saved to {@code config/upscaling.properties} and edited in
+ * Options -> Upscaling... or with keybinds; JVM properties override them at startup.
  *
- * <p>{@code -Dupscaling.scale=0.5} sets the initial render scale (0.25..1.0),
+ * <p>{@code -Dupscaling.scale=0.5} sets the render scale (0.33..1.0),
  * {@code -Dupscaling.enabled=false} starts with upscaling off,
  * {@code -Dupscaling.jitter=true} jitters the camera (only useful once a temporal
  * upscaler consumes it; with the bilinear stretch it just makes the image shimmer),
@@ -24,17 +32,41 @@ import net.fabricmc.loader.api.FabricLoader;
  * {@code -Dupscaling.fsr4.log=true} makes fsr4vk write provider.log next to its assets.
  */
 public final class UpscalingConfig {
-	/** Render scales the cycle keybind steps through, matching the usual upscaler quality presets. */
-	private static final float[] SCALE_PRESETS = {1.0f, 1.0f / 1.5f, 1.0f / 1.7f, 0.5f, 1.0f / 3.0f};
+	private static final Logger LOGGER = LogUtils.getLogger();
+	private static final Path FILE = FabricLoader.getInstance().getConfigDir().resolve("upscaling.properties");
+
+	/** Render scale range in percent: FSR supports up to 3x upscaling. */
+	public static final int MIN_SCALE_PERCENT = 33;
+	public static final int MAX_SCALE_PERCENT = 100;
+	/** The usual upscaler quality presets, as render scale in percent (1/1.5, 1/1.7, 1/2, 1/3). */
+	private static final int[] PRESET_PERCENTS = {100, 67, 59, 50, 33};
 	private static final String[] PRESET_NAMES = {"Native AA", "Quality", "Balanced", "Performance", "Ultra Performance"};
 
-	private static boolean enabled = Boolean.parseBoolean(System.getProperty("upscaling.enabled", "true"));
-	private static float scale = clampScale(parseFloat(System.getProperty("upscaling.scale"), 0.5f));
+	private static boolean enabled = true;
+	private static int scalePercent = 50;
+	/** RCAS sharpening strength 0..1 in steps of 0.05 (stored as 0..20); 0 is off. */
+	private static int sharpnessSteps = 0;
 	private static final boolean jitter = Boolean.parseBoolean(System.getProperty("upscaling.jitter", "false"));
 	private static final float debugSpin = parseFloat(System.getProperty("upscaling.debugSpin"), 0.0f);
 	private static final float debugGlide = parseFloat(System.getProperty("upscaling.debugGlide"), 0.0f);
 	private static DebugView debugView = DebugView.fromName(System.getProperty("upscaling.debugView", "off"));
-	private static Upscaler upscaler = "bilinear".equalsIgnoreCase(System.getProperty("upscaling.upscaler")) ? Upscaler.BILINEAR : Upscaler.FSR4;
+	private static Upscaler upscaler = Upscaler.FSR4;
+
+	static {
+		load();
+		String property = System.getProperty("upscaling.enabled");
+		if (property != null) {
+			enabled = Boolean.parseBoolean(property);
+		}
+		property = System.getProperty("upscaling.scale");
+		if (property != null) {
+			scalePercent = clampPercent(Math.round(parseFloat(property, 0.5f) * 100.0f));
+		}
+		property = System.getProperty("upscaling.upscaler");
+		if (property != null) {
+			upscaler = Upscaler.fromName(property, upscaler);
+		}
+	}
 
 	public enum Upscaler {
 		FSR4("FSR 4"),
@@ -48,6 +80,15 @@ public final class UpscalingConfig {
 
 		public String displayName() {
 			return this.displayName;
+		}
+
+		static Upscaler fromName(String name, Upscaler fallback) {
+			for (Upscaler value : values()) {
+				if (value.name().equalsIgnoreCase(name)) {
+					return value;
+				}
+			}
+			return fallback;
 		}
 	}
 
@@ -86,7 +127,45 @@ public final class UpscalingConfig {
 	}
 
 	public static float scale() {
-		return scale;
+		return scalePercent / 100.0f;
+	}
+
+	public static int scalePercent() {
+		return scalePercent;
+	}
+
+	public static void setScalePercent(int percent) {
+		scalePercent = clampPercent(percent);
+	}
+
+	/** Preset name for a render scale, or null when it is not one of the presets. */
+	public static String presetName(int percent) {
+		for (int i = 0; i < PRESET_PERCENTS.length; i++) {
+			if (PRESET_PERCENTS[i] == percent) {
+				return PRESET_NAMES[i];
+			}
+		}
+		return null;
+	}
+
+	public static float sharpness() {
+		return sharpnessSteps * 0.05f;
+	}
+
+	public static int sharpnessSteps() {
+		return sharpnessSteps;
+	}
+
+	public static void setSharpnessSteps(int steps) {
+		sharpnessSteps = Math.max(0, Math.min(20, steps));
+	}
+
+	public static void setEnabled(boolean value) {
+		enabled = value;
+	}
+
+	public static void setUpscaler(Upscaler value) {
+		upscaler = value;
 	}
 
 	public static Upscaler upscaler() {
@@ -142,21 +221,66 @@ public final class UpscalingConfig {
 		return enabled;
 	}
 
-	/** Steps to the next preset and returns its display name. */
+	/** Steps to the next preset (the first one if the scale is custom) and returns its display name. */
 	public static String cycleScale() {
 		int next = 0;
-		for (int i = 0; i < SCALE_PRESETS.length; i++) {
-			if (Math.abs(SCALE_PRESETS[i] - scale) < 1.0e-3f) {
-				next = (i + 1) % SCALE_PRESETS.length;
+		for (int i = 0; i < PRESET_PERCENTS.length; i++) {
+			if (PRESET_PERCENTS[i] == scalePercent) {
+				next = (i + 1) % PRESET_PERCENTS.length;
 				break;
 			}
 		}
-		scale = SCALE_PRESETS[next];
+		scalePercent = PRESET_PERCENTS[next];
 		return PRESET_NAMES[next];
 	}
 
-	private static float clampScale(float value) {
-		return Math.max(0.25f, Math.min(1.0f, value));
+	private static int clampPercent(int percent) {
+		return Math.max(MIN_SCALE_PERCENT, Math.min(MAX_SCALE_PERCENT, percent));
+	}
+
+	private static void load() {
+		if (!Files.isRegularFile(FILE)) {
+			return;
+		}
+		Properties properties = new Properties();
+		try (Reader reader = Files.newBufferedReader(FILE)) {
+			properties.load(reader);
+		} catch (IOException e) {
+			LOGGER.warn("Upscaling: could not read {}", FILE, e);
+			return;
+		}
+		enabled = Boolean.parseBoolean(properties.getProperty("enabled", Boolean.toString(enabled)));
+		upscaler = Upscaler.fromName(properties.getProperty("upscaler", upscaler.name()), upscaler);
+		scalePercent = clampPercent(parseInt(properties.getProperty("renderScalePercent"), scalePercent));
+		setSharpnessSteps(Math.round(parseFloat(properties.getProperty("sharpness"), 0.0f) / 0.05f));
+	}
+
+	/** Writes the user-facing settings to config/upscaling.properties. */
+	public static void save() {
+		Properties properties = new Properties();
+		properties.setProperty("enabled", Boolean.toString(enabled));
+		properties.setProperty("upscaler", upscaler.name());
+		properties.setProperty("renderScalePercent", Integer.toString(scalePercent));
+		properties.setProperty("sharpness", String.format(java.util.Locale.ROOT, "%.2f", sharpness()));
+		try {
+			Files.createDirectories(FILE.getParent());
+			try (Writer writer = Files.newBufferedWriter(FILE)) {
+				properties.store(writer, "Upscaling mod settings");
+			}
+		} catch (IOException e) {
+			LOGGER.warn("Upscaling: could not write {}", FILE, e);
+		}
+	}
+
+	private static int parseInt(String value, int fallback) {
+		if (value == null) {
+			return fallback;
+		}
+		try {
+			return Integer.parseInt(value.trim());
+		} catch (NumberFormatException e) {
+			return fallback;
+		}
 	}
 
 	private static float parseFloat(String value, float fallback) {

@@ -21,6 +21,7 @@ public final class UpscalingClient implements ClientModInitializer {
 		KeyMapping toggle = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.upscaling.toggle", InputConstants.KEY_F8, CATEGORY));
 		KeyMapping cycle = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.upscaling.cycle_scale", InputConstants.KEY_F9, CATEGORY));
 		KeyMapping upscaler = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.upscaling.cycle_upscaler", InputConstants.KEY_F7, CATEGORY));
+		KeyMapping settings = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.upscaling.open_settings", InputConstants.UNKNOWN.getValue(), CATEGORY));
 		KeyMapping debug = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.upscaling.cycle_debug", InputConstants.KEY_F10, CATEGORY));
 
 		ClientLifecycleEvents.CLIENT_STARTED.register(client -> LOGGER.info(
@@ -29,14 +30,20 @@ public final class UpscalingClient implements ClientModInitializer {
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			while (toggle.consumeClick()) {
 				boolean on = UpscalingConfig.toggle();
+				UpscalingConfig.save();
 				notify(client, on ? "Upscaling ON (" + Math.round(UpscalingConfig.scale() * 100) + "% render scale)" : "Upscaling OFF (native)");
 			}
 			while (cycle.consumeClick()) {
 				String preset = UpscalingConfig.cycleScale();
+				UpscalingConfig.save();
 				notify(client, "Render scale: " + preset + " (" + Math.round(UpscalingConfig.scale() * 100) + "%)");
 			}
 			while (upscaler.consumeClick()) {
 				notify(client, "Upscaler: " + UpscalingConfig.cycleUpscaler().displayName());
+				UpscalingConfig.save();
+			}
+			while (settings.consumeClick()) {
+				client.gui.setScreen(new UpscalingOptionsScreen(client.gui.screen(), client.options));
 			}
 			while (debug.consumeClick()) {
 				notify(client, "Debug view: " + UpscalingConfig.cycleDebugView().displayName());

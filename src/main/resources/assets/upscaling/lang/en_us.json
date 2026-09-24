@@ -3,5 +3,16 @@
 	"key.upscaling.toggle": "Toggle upscaling",
 	"key.upscaling.cycle_scale": "Cycle render scale",
 	"key.upscaling.cycle_debug": "Cycle debug view",
-	"key.upscaling.cycle_upscaler": "Cycle upscaler"
+	"key.upscaling.cycle_upscaler": "Cycle upscaler",
+	"key.upscaling.open_settings": "Open upscaling settings",
+	"upscaling.options.button": "Upscaling...",
+	"upscaling.options.title": "Upscaling",
+	"upscaling.options.enabled": "Upscaling",
+	"upscaling.options.enabled.tooltip": "Off renders the world at native resolution with no upscaler.",
+	"upscaling.options.upscaler": "Upscaler",
+	"upscaling.options.upscaler.tooltip": "FSR 4 needs the Vulkan graphics API and fsr4vk (see the mod's README). Without them it falls back to Bilinear.",
+	"upscaling.options.renderScale": "Render Scale",
+	"upscaling.options.renderScale.tooltip": "Resolution the world is rendered at before upscaling. 100% (Native AA) renders at full resolution and uses FSR only as anti-aliasing.",
+	"upscaling.options.sharpness": "Sharpness",
+	"upscaling.options.sharpness.tooltip": "RCAS sharpening applied to the FSR 4 output. Has no effect with the Bilinear upscaler."
 }

@@ -30,6 +30,16 @@ executing fsr4vk's shaders (fsr4vk's own smoke test crashes the same way), so
 to need fixing on first real run: jitter direction, colour handling, image
 barriers.
 
+### Settings
+
+**Options → Upscaling...** has the on/off switch, the upscaler, a **Render
+Scale** slider (33–100 %, labelled with the matching preset: Native AA 100 /
+Quality 67 / Balanced 59 / Performance 50 / Ultra Performance 33) and a
+**Sharpness** slider (0–1 in 0.05 steps, 0 = off). Sharpening is AMD's RCAS
+applied to the FSR 4 output, since fsr4vk has no built-in sharpening; it does
+nothing with the bilinear upscaler. Settings are saved to
+`config/upscaling.properties`.
+
 ### Keys
 
 | Key | Action |
@@ -38,6 +48,7 @@ barriers.
 | F8 | Upscaling on/off (off = native rendering) |
 | F9 | Cycle render scale: Native AA 100% / Quality 67% / Balanced 59% / Performance 50% / Ultra Performance 33% |
 | F10 | Cycle debug views: motion vectors / orientation / reprojection error |
+| (unbound) | Open the upscaling settings |
 
 ### Installing FSR 4 (Linux)
 
@@ -57,7 +68,8 @@ with Fabric API, set **Video Settings → Graphics API → Vulkan**, and restart
 
 ### JVM flags
 
-`-Dupscaling.scale=1.0` initial render scale (0.25..1.0, default 0.5),
+JVM flags override the saved settings for that launch:
+`-Dupscaling.scale=1.0` render scale (0.33..1.0, default 0.5),
 `-Dupscaling.enabled=false`, `-Dupscaling.upscaler=fsr4|bilinear`,
 `-Dupscaling.fsr4vk=<dir>` (default `<game dir>/upscaling/fsr4vk`),
 `-Dupscaling.fsr4.version=4.1.1|4.0.2`, `-Dupscaling.fsr4.log=true` (fsr4vk

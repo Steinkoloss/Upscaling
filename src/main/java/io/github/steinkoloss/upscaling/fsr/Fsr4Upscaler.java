@@ -4,6 +4,7 @@ import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.logging.LogUtils;
 import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.renderpearl.api.device.DeviceType;
 import com.mojang.renderpearl.api.device.GpuDevice;
@@ -98,6 +99,21 @@ public final class Fsr4Upscaler {
 			.withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
 			.build();
 
+	private static final BindGroupLayout RCAS_INFO = BindGroupLayout.builder()
+			.withUniform("RcasInfo", UniformType.UNIFORM_BUFFER)
+			.build();
+	private static final RenderPipeline RCAS = RenderPipeline.builder()
+			.withLocation(Identifier.fromNamespaceAndPath("upscaling", "pipeline/rcas"))
+			.withVertexShader("core/screenquad")
+			.withFragmentShader(Identifier.fromNamespaceAndPath("upscaling", "core/rcas"))
+			.withBindGroupLayout(IN_SAMPLER)
+			.withBindGroupLayout(RCAS_INFO)
+			.withColorTargetState(ColorTargetState.DEFAULT)
+			.withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
+			.build();
+	private static final int RCAS_UBO_SIZE = 16;
+	private static @Nullable GpuBuffer rcasUbo;
+
 	private enum State {
 		UNINITIALIZED,
 		READY,
@@ -182,6 +198,10 @@ public final class Fsr4Upscaler {
 		if (exposure != null) {
 			exposure.close();
 			exposure = null;
+		}
+		if (rcasUbo != null) {
+			rcasUbo.close();
+			rcasUbo = null;
 		}
 	}
 
@@ -404,12 +424,28 @@ public final class Fsr4Upscaler {
 		}
 	}
 
+	/** Copies the FSR output into the main target, sharpening it with RCAS when sharpness is above 0. */
 	private static void blit(GpuTextureView source, RenderTarget target) {
-		try (RenderPass pass = RenderSystem.getDevice()
-				.createCommandEncoder()
-				.createRenderPass(() -> "Upscaling FSR output", target.getColorTextureView(), Optional.empty(), null, OptionalDouble.empty())) {
-			pass.setPipeline(RenderSystem.getCompiledPipeline(RenderPipelines.TRACY_BLIT));
-			RenderSystem.bindDefaultUniforms(pass);
+		float sharpness = UpscalingConfig.sharpness();
+		var encoder = RenderSystem.getDevice().createCommandEncoder();
+		if (sharpness > 0.0f) {
+			if (rcasUbo == null) {
+				rcasUbo = RenderSystem.getDevice().createBuffer(() -> "Upscaling RCAS UBO", GpuBuffer.USAGE_UNIFORM | GpuBuffer.USAGE_COPY_DST, RCAS_UBO_SIZE);
+			}
+			// Same mapping as the FSR 3.1 API: sharpness 0..1 -> 2..0 stops -> scale exp2(-stops).
+			float stops = 2.0f - 2.0f * sharpness;
+			ByteBuffer data = ByteBuffer.allocateDirect(RCAS_UBO_SIZE).order(ByteOrder.nativeOrder());
+			data.putFloat(0, (float) Math.pow(2.0, -stops));
+			encoder.writeToBuffer(rcasUbo.slice(), data);
+		}
+		try (RenderPass pass = encoder.createRenderPass(() -> "Upscaling FSR output", target.getColorTextureView(), Optional.empty(), null, OptionalDouble.empty())) {
+			if (sharpness > 0.0f) {
+				pass.setPipeline(RenderSystem.getCompiledPipeline(RCAS));
+				pass.setUniform("RcasInfo", rcasUbo);
+			} else {
+				pass.setPipeline(RenderSystem.getCompiledPipeline(RenderPipelines.TRACY_BLIT));
+				RenderSystem.bindDefaultUniforms(pass);
+			}
 			pass.setUniform("InSampler", source, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
 			pass.draw(3, 1, 0, 0);
 		}
